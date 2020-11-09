@@ -19,7 +19,7 @@
 # %% [markdown] heading_collapsed=true
 # ## Setup
 
-# %% init_cell=true hidden=true
+# %% hidden=true
 %load_ext autoreload
 %autoreload 2
 
@@ -45,7 +45,7 @@ from tqdm.auto import tqdm, trange
 
 mpl_colors = 2 * [c["color"] for c in plt.rcParams["axes.prop_cycle"]]
 
-# %% code_folding=[7] init_cell=true hidden=true
+# %% code_folding=[] hidden=true
 # This is approximately the same as `gc_bg_model`, but does not constrain
 # the input energies.
 gc_bg_model_approx = BackgroundModel(
@@ -82,7 +82,7 @@ def get_constraints(model, mxs, targets, telescopes, T_obs):
     return dict(constraints)
 
 
-# %% code_folding=[8] init_cell=true hidden=true
+# %% code_folding=[8] hidden=true
 # For loading existing bounds
 default_bounds = [
     "INTEGRAL",
@@ -103,7 +103,7 @@ default_bound_labels = [
     "Dwarf heating",
 ]
 
-# %% code_folding=[16] init_cell=true hidden=true
+# %% code_folding=[16] hidden=true
 # Formatting
 telescope_colors = {
     "comptel": mpl_colors[0],
@@ -289,10 +289,10 @@ fig.savefig(f"figures/pbh_bounds_T_obs={T_obs:.0e}.pdf")
 
 # %% hidden=true
 
-# %% [markdown]
+# %% [markdown] heading_collapsed=true
 # ## GECCO discovery reach
 
-# %%
+# %% hidden=true
 # Set up analysis
 targets = {
     "gc_ein_5_deg_optimistic": (
@@ -311,7 +311,7 @@ pbh = PBH(1e15 * g_to_MeV, spectrum_kind="secondary")  # initialize with valid m
 f_pbh_new = get_constraints(pbh, pbh._mxs, targets, telescopes, T_obs)
 m_pbhs = pbh._mxs * MeV_to_g
 
-# %%
+# %% hidden=true
 plt.figure(figsize=(4, 3.2))
 
 # GECCO projections
@@ -348,7 +348,7 @@ plt.tight_layout()
 
 plt.savefig(f"figures/pbh_bounds_gecco_T_obs={T_obs:.0e}.pdf")
 
-# %%
+# %% hidden=true
 
 # %% [markdown] heading_collapsed=true
 # ## Effective areas
@@ -384,7 +384,7 @@ plt.plot(e_gams, A_eff_amego(e_gams), color=telescope_colors["amego"], label="AM
 plt.plot(
     e_gams,
     A_eff_e_astrogam(e_gams),
-    color=telescope_colors["e-astrogam"],
+    color=telescope_colors["e_astrogam"],
     label="e-ASTROGAM",
 )
 plt.plot(e_gams, A_eff_gecco(e_gams), color=telescope_colors["gecco"], label="GECCO")
@@ -405,7 +405,7 @@ box = plt.gca().get_position()
 plt.gca().set_position([box.x0, box.y0, box.width * 0.8, box.height])
 plt.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=7)
 
-plt.savefig("figures/a_effs.pdf", bbox_inches="tight")
+# plt.savefig("figures/a_effs.pdf", bbox_inches="tight")
 
 # %% hidden=true
 
@@ -413,26 +413,20 @@ plt.savefig("figures/a_effs.pdf", bbox_inches="tight")
 # ## Sanity check: evaporation spectra
 
 # %% hidden=true
-mxs = np.geomspace(1e15, 1e18, 61) * g_to_MeV
-
-for mx, color in zip(mxs[::20], mpl_colors):
-    pbh_sec = PBH(mx, spectrum_kind="secondary")
-    ax.loglog(
+pbh_sec = PBH(1e15 * g_to_MeV, spectrum_kind="secondary")
+for mx, color in zip(pbh_sec._mxs[::20], mpl_colors):
+    pbh_sec.mx = mx
+    plt.loglog(
         e_gams,
         e_gams ** 2 * pbh_sec.total_spectrum(e_gams),
         color=color,
-        linewidth=0.5,
-    )
-    pbh_prim = PBH(mx, spectrum_kind="primary")
-    ax.loglog(
-        e_gams,
-        e_gams ** 2 * pbh_prim.total_spectrum(e_gams),
-        color=color,
-        label=r"$10^{%i}\, \mathrm{g}$" % int(np.log10(mx * MeV_to_g)),
+        label=r"$10^{%f}\, \mathrm{g}$" % int(np.log10(mx * MeV_to_g)),
     )
 
-ax.set_xlim(e_gams[[0, -1]])
-ax.set_ylim(1e1, 1e30)
-ax.set_xlabel(r"$E_\gamma$ [MeV]")
-ax.set_ylabel(r"$\frac{d^2N}{dE_\gamma\, dt}$ [MeV$^{-1}$ s$^{-1}$]")
+plt.xlim(e_gams[[0, -1]])
+plt.ylim(1e1, 1e30)
+plt.xlabel(r"$E_\gamma$ [MeV]")
+plt.ylabel(r"$\frac{d^2N}{dE_\gamma\, dt}$ [MeV$^{-1}$ s$^{-1}$]")
 plt.legend()
+
+# %% hidden=true
