@@ -45,6 +45,7 @@ from hazma.parameters import (
     sv_inv_MeV_to_cm3_per_s,
     muon_mass as m_mu,
     charged_pion_mass as m_pi,
+    neutral_pion_mass as m_pi0,
     electron_mass as m_e
 )
 from hazma.gamma_ray_parameters import *
@@ -54,7 +55,7 @@ from hazma.scalar_mediator import HiggsPortal, HeavyQuark
 from hazma.vector_mediator import KineticMixing, QuarksOnly
 from hazma.single_channel import SingleChannelAnn, SingleChannelDec
 
-# %% code_folding=[11, 21, 91, 100] init_cell=true hidden=true
+# %% code_folding=[77, 95, 104, 111] init_cell=true hidden=true
 # Other constants
 T_obs_nt = 1e6  # s
 v_mw = 1e-3
@@ -181,6 +182,32 @@ def plot_existing(ax, mxs, svs, label, color, y2=1):
         ax.fill_between(mxs, svs, y2=y2, label=label, alpha=0.2, color=color)
         ax.loglog(mxs, svs, "-", color=color, linewidth=0.5)
 
+# Global formatting
+colors = {
+    "comptel": mpl_colors[0],
+    "egret": mpl_colors[1],
+    "fermi": mpl_colors[2],
+    "integral": mpl_colors[3],
+    "gc_ein_1_arcmin_cone_optimistic": mpl_colors[4],
+    "gc_ein_5_deg_optimistic": mpl_colors[4],
+    "gc_nfw_1_arcmin_cone": mpl_colors[5],
+    "gc_nfw_5_deg": mpl_colors[5],
+    "m31_nfw_1_arcmin_cone": mpl_colors[6],
+    "m31_nfw_5_deg": mpl_colors[6],
+    "draco_nfw_1_arcmin_cone": mpl_colors[7],
+    "draco_nfw_5_deg": mpl_colors[7],
+}
+
+linestyles = {
+    "gc_ein_1_arcmin_cone_optimistic": "-",
+    "gc_ein_5_deg_optimistic": "-",
+    "gc_nfw_1_arcmin_cone": "--",
+    "gc_nfw_5_deg": "--",
+    "m31_nfw_1_arcmin_cone": ":",
+    "m31_nfw_5_deg": ":",
+    "draco_nfw_1_arcmin_cone": ":",
+    "draco_nfw_5_deg": ":",
+}
 
 # Base figure size
 fig_dim = 4
@@ -196,10 +223,10 @@ mpl_colors = 2*[c["color"] for c in plt.rcParams["axes.prop_cycle"]]
 fss = ["e e", "g g", "mu mu", "pi pi"]
 n_mxs = 100
 mxs = {
-    "e e": np.geomspace(m_e, 5e3, n_mxs),
+    "e e": np.geomspace(m_e, 10 * 1e3, n_mxs),
     "g g": np.geomspace(6e-2, 1e1, n_mxs),
-    "mu mu": np.geomspace(m_mu, 5e3, n_mxs),
-    "pi pi": np.geomspace(m_pi, 5e3, n_mxs),
+    "mu mu": np.geomspace(m_mu, 10 * 1e3, n_mxs),
+    "pi pi": np.geomspace(m_pi, 10 * 1e3, n_mxs),
 }
 
 # Compute
@@ -239,6 +266,18 @@ y_lims = {
     "pi0 g": (1e-30, 1e-22),
 }
 
+
+# %% hidden=true
+def plot_integral_secondary(ax, fs, base_dir="data/integral/"):
+    if fs not in ["e e", "mu mu", "pi pi"]:
+        return
+    
+    es, svs = np.loadtxt(
+        f"{os.path.join(base_dir, fs.replace(' ', '_'))}.csv", unpack=True
+    )
+    ax.plot(es, svs, ":r")
+
+
 # %% code_folding=[] hidden=true
 fig, axes = plt.subplots(2, 2, figsize=(fig_dim * 2, fig_dim * 2 * 0.85))
 
@@ -254,6 +293,8 @@ for fs, ax in zip(fss, axes.flatten()):
             plot_existing(ax, mxs[fs], svs[fs][key], label, color)
         else:
             ax.loglog(mxs[fs], svs[fs][key], label=label, color=color)
+    
+    plot_integral_secondary(ax, fs)
 
 # Formatting
 for fs, ax in zip(fss, axes.flatten()):
@@ -278,12 +319,12 @@ for ax in axes[:, 0]:
 
 fig.tight_layout()
 
-# Put a legend below last axis
-axes[-1, -1].legend(
-    loc='upper center', bbox_to_anchor=(-0.2, -0.3), fancybox=True, shadow=True, ncol=3
+axes[-1, -1].set_visible(False)
+axes[-1, 0].legend(
+    loc="center left", bbox_to_anchor=(1.32, 0.5)
 )
 
-fig.savefig("figures/single_channel_ann.pdf", bbox_inches="tight")
+# fig.savefig("figures/single_channel_ann.pdf", bbox_inches="tight")
 
 # %% hidden=true
 
@@ -361,11 +402,6 @@ for fs, ax in zip(fss, axes.flatten()):
     ax.set_title(get_fs_label(fs))
     ax.set_xlim(mxs[fs][[0, -1]])
     ax.set_ylim(y_lims[fs])
-    
-    # Ticks
-#     ax.yaxis.set_major_locator(LogLocator(base=10, numticks=20))
-#     ax.yaxis.set_minor_locator(LogLocator(base=10, numticks=20))
-#     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.xaxis.grid(True, which='major')
     ax.yaxis.grid(True, which='major')
 
@@ -377,9 +413,9 @@ for ax in axes[:, 0]:
 
 fig.tight_layout()
 
-# Put a legend below last axis
-axes[-1, -1].legend(
-    loc='upper center', bbox_to_anchor=(-0.2, -0.3), fancybox=True, shadow=True, ncol=3
+axes[-1, -1].set_visible(False)
+axes[-1, 0].legend(
+    loc="center left", bbox_to_anchor=(1.32, 0.5)
 )
 
 fig.savefig("figures/single_channel_dec.pdf", bbox_inches="tight")
@@ -388,7 +424,7 @@ fig.savefig("figures/single_channel_dec.pdf", bbox_inches="tight")
 # %% hidden=true
 
 # %% [markdown] heading_collapsed=true
-# ## Higgs portal model (not finished)
+# ## Higgs portal model
 
 # %% [markdown] heading_collapsed=true hidden=true
 # ### Check pheno constraints on $\sin\theta$
@@ -468,7 +504,7 @@ np.savez("data/higgs_portal/svs.npz", svs=svs)
 np.savez("data/higgs_portal/mxs.npz", mxs=mxs)
 np.savez("data/higgs_portal/mss.npz", mss=mss)
 
-# %% [markdown] heading_collapsed=true hidden=true
+# %% [markdown] hidden=true
 # ### Plot
 
 # %% hidden=true
@@ -500,22 +536,21 @@ def get_svs_pheno(model, mxs, mss, stheta, vx=1e-3):
 
 # %% hidden=true
 titles = [
-    r"$m_S = m_\chi / 10$",
     r"$m_S = m_\chi / 2$",
     r"$m_S = 2 m_\chi$",
 ]
 y_lims = [
     (1e-37, 1e-22),
     (1e-37, 1e-22),
-    (1e-37, 1e-22),
 ]
 stheta_pheno = lambda mx, ms: 5e-3 if ms > 400 else 4e-4
 
 # %% hidden=true
-fig, axes = plt.subplots(1, len(mxs), figsize=(len(mxs) * fig_dim, 0.9 * fig_dim))
-# fig, axes = plt.subplots(1, 3, figsize=(3 * fig_dim, 0.9 * fig_dim))
+fig, axes = plt.subplots(
+    1, len(mxs) + 1, figsize=((len(mxs) + 1) * fig_dim, 0.9 * fig_dim)
+)
 
-for i, ax in enumerate(axes):
+for i, ax in enumerate(axes[:-1]):
     # Pheno constraint
     svs_pheno = get_svs_pheno(
         hp, mxs[i], mss[i], stheta_pheno, v_mw
@@ -528,35 +563,46 @@ for i, ax in enumerate(axes):
         3e-26 * (v_mw / v_fo)**2, linestyle="-", color="k", label="Thermal relic"
     )
     
-    # Astro/cosmology constraints/projections
+    # Envelope of existing gamma-ray constraints
+    sv_envelope = np.stack(
+        [svs[i][k] for k in ["comptel", "fermi", "egret", "integral"]]
+    ).min(0)
+    plot_existing(ax, mxs[i], sv_envelope, r"$\gamma$-ray telescopes", "k")
+    
+    # CMB
+    v_cmbs = 2e-4 * (0.235) * (1 / mxs[i]) * np.sqrt(1e-4 / x_kd)
+    ax.plot(mxs[i], svs[i]["cmb"] * (v_mw / v_cmbs)**2, "--k", label=r"CMB")
+    
+    # Projections
     for key, color in zip(svs[i], mpl_colors):
-        if key == "cmb":
-            v_cmbs = 2e-4 * (0.235) * (1 / mxs[i]) * np.sqrt(1e-4 / x_kd)
-            ax.plot(mxs[i], svs[i][key] * (v_mw / v_cmbs)**2, "--k", label=r"CMB")
-        else:
-            label = get_constraint_label(key)
-            if "gecco" not in key:
-                plot_existing(ax, mxs[i], svs[i][key], label, color)
-            else:
-                ax.loglog(mxs[i], svs[i][key], label=label, color=color)
+        if "gecco" in key:
+            ax.loglog(
+                mxs[i], svs[i][key], label=get_constraint_label(key), color=color
+            )
 
 # Formatting
-for i, ax in enumerate(axes):
+for i, ax in enumerate(axes[:-1]):
     ax.set_title(titles[i])
     ax.set_xlim(mxs[i][[0, -1]])
     ax.set_ylim(y_lims[i])
     ax.set_xlabel(r"$m_\chi$ [MeV]")
-    ax.set_ylabel(
-        r"$\langle \sigma v \rangle_{\bar{\chi}\chi, 0}$ [cm$^3$/s]"
-    )
     ax.xaxis.grid(True, which='major')
     ax.yaxis.grid(True, which='major')
+
+axes[0].set_ylabel(
+    r"$\langle \sigma v \rangle_{\bar{\chi}\chi, 0}$ [cm$^3$/s]"
+)
 
 fig.tight_layout()
 
 # Put a legend below last axis
 axes[1].legend(
     loc='upper center', bbox_to_anchor=(0.5, -0.3), fancybox=True, shadow=True, ncol=3
+)
+
+axes[-1].set_visible(False)
+axes[1].legend(
+    loc="center left", bbox_to_anchor=(1.1, 0.5)
 )
 
 fig.savefig("figures/higgs_portal.pdf", bbox_inches="tight")
