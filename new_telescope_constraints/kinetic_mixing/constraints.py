@@ -12,7 +12,11 @@ from typing import List, Optional, Dict
 from scipy.optimize import root_scalar
 from scipy.interpolate import interp1d
 
-from hazma.parameters import omega_h2_cdm, sv_inv_MeV_to_cm3_per_s
+from hazma.parameters import (
+    omega_h2_cdm,
+    sv_inv_MeV_to_cm3_per_s,
+    dimensionless_hubble_constant,
+)
 from hazma.vector_mediator import KineticMixing
 from hazma.relic_density import relic_density
 from hazma.gamma_ray_parameters import (
@@ -282,16 +286,15 @@ class Constraints(KineticMixing):
             """
             self.eps = 10 ** log_eps
             return (
-                relic_density(self, semi_analytic=semi_analytic) - omega_h2_cdm
+                relic_density(self, semi_analytic=semi_analytic)
+                - omega_h2_cdm / dimensionless_hubble_constant ** 2
             )
 
         for i, mx in enumerate(tqdm.tqdm(mxs, desc="relic-density")):
             self.mx = mx
             self.mv = mvs[i]
             try:
-                root = root_scalar(
-                    residual, bracket=[log_eps_min, log_eps_max]
-                )
+                root = root_scalar(residual, bracket=[log_eps_min, log_eps_max])
                 self.eps = 10 ** (root.root)
                 svs[i] = (
                     vx
@@ -334,9 +337,7 @@ class Constraints(KineticMixing):
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (
-            self.annihilation_cross_sections(
-                2 * self.mx * (1 + 0.5 * vx ** 2)
-            )["total"]
+            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
             * vx
         )
         self.eps = eps
@@ -371,9 +372,7 @@ class Constraints(KineticMixing):
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (
-            self.annihilation_cross_sections(
-                2 * self.mx * (1 + 0.5 * vx ** 2)
-            )["total"]
+            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
             * vx
         )
         self.eps = eps
@@ -409,9 +408,7 @@ class Constraints(KineticMixing):
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (
-            self.annihilation_cross_sections(
-                2 * self.mx * (1 + 0.5 * vx ** 2)
-            )["total"]
+            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
             * vx
         )
         self.eps = eps
