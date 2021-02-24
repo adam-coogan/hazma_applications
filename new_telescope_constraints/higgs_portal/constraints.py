@@ -17,7 +17,7 @@ from hazma.parameters import (
     sv_inv_MeV_to_cm3_per_s,
     dimensionless_hubble_constant,
 )
-from hazma.vector_mediator import KineticMixing
+from hazma.scalar_mediator import HiggsPortal
 from hazma.relic_density import relic_density
 from hazma.gamma_ray_parameters import (
     TargetParams,
@@ -74,23 +74,14 @@ ENERGY_RESOLUTIONS = {
     "pangu": energy_res_pangu,
 }
 
-babar_data = np.genfromtxt("data/BaBar.dat", delimiter=",")
-lsnd_data = np.genfromtxt("data/LSND.dat", delimiter=",")
-e137_data = np.genfromtxt("data/E137.dat", delimiter=",")
 
-babar_interp = interp1d(babar_data.T[0], babar_data.T[1])
-lsnd_interp = interp1d(lsnd_data.T[0], lsnd_data.T[1])
-e137_interp = interp1d(e137_data.T[0], e137_data.T[1])
-
-
-class Constraints(KineticMixing):
+class Constraints(HiggsPortal):
     """
-    Class for computing the gamma-ray constraints from the KineticMixing
-    model.
+    Class for computing the gamma-ray constraints from the HiggsPortal model.
     """
 
-    def __init__(self, mx, mv, gvxx, eps):
-        super().__init__(mx, mv, gvxx, eps)
+    def __init__(self, mx, ms, gsxx, stheta):
+        super().__init__(mx, ms, gsxx, stheta)
 
         # The baseline observation time for new telescopes
         self._observation_time = 1e6
@@ -157,7 +148,7 @@ class Constraints(KineticMixing):
     def compute_telescope_constraints(
         self,
         mxs: ArrayLike,
-        mvs: ArrayLike,
+        mss: ArrayLike,
         existing_telescopes: Optional[List[str]] = None,
         new_telescopes: Optional[List[str]] = None,
     ) -> Dict[str, ArrayLike]:
@@ -168,7 +159,7 @@ class Constraints(KineticMixing):
         ----------
         mxs: ArrayLike
             Dark matter masses.
-        mvs: ArrayLike
+        mss: ArrayLike
             Mediator masses.
         existing_telescopes: List[str], optional
             List of existing telescopes. If None, comptel, egret, fermi and
@@ -197,7 +188,7 @@ class Constraints(KineticMixing):
             constraints[name] = np.zeros_like(mxs)
             for i, mx in enumerate(tqdm(mxs, desc="{:11}".format(name))):
                 self.mx = mx
-                self.mv = mvs[i]
+                self.ms = mss[i]
                 constraints[name][i] = self.binned_limit(diffuse)
 
         # Compute constraints for new telescopes
@@ -205,7 +196,7 @@ class Constraints(KineticMixing):
             constraints[name] = np.zeros_like(mxs)
             for i, mx in enumerate(tqdm(mxs, desc="{:11}".format(name))):
                 self.mx = mx
-                self.mv = mvs[i]
+                self.ms = mss[i]
                 constraints[name][i] = self.unbinned_limit(
                     EFFECTIVE_AREAS[name],
                     ENERGY_RESOLUTIONS[name],
@@ -217,7 +208,7 @@ class Constraints(KineticMixing):
         return constraints
 
     def compute_cmb_constraints(
-        self, mxs: ArrayLike, mvs: ArrayLike, x_kd: float = 1e-6
+        self, mxs: ArrayLike, mss: ArrayLike, x_kd: float = 1e-6
     ):
         """
         Compute the constraints on <sigma*v> from CMB.
@@ -226,7 +217,7 @@ class Constraints(KineticMixing):
         ----------
         mxs: ArrayLike
             Dark matter masses.
-        mvs: ArrayLike
+        mss: ArrayLike
             Mediator masses.
         x_kd: float
             Value of m/T at kinetic decoupling.
@@ -239,7 +230,7 @@ class Constraints(KineticMixing):
         constraints = np.zeros_like(mxs)
         for i, mx in enumerate(tqdm(mxs, desc="cmb")):
             self.mx = mx
-            self.mv = mvs[i]
+            self.ms = mss[i]
             constraints[i] = self.cmb_limit(x_kd=x_kd)
 
         return constraints
@@ -247,34 +238,29 @@ class Constraints(KineticMixing):
     def compute_relic_density_contours(
         self,
         mxs: ArrayLike,
-        mvs: ArrayLike,
+        mss: ArrayLike,
         semi_analytic: bool = True,
-        log_eps_min: float = -30.0,
-        log_eps_max: float = 0.0,
+        stheta: float = 1,
         vx: float = 1e-3,
-    ):
+    ) -> ArrayLike:
         """
-        Compute the values of epsilon such that the dark matter relic density
-        is the observed value.
+        Compute the values of stheta such that the dark matter relic density is
+        the observed value.
 
         Parameters
         ----------
         mxs: ArrayLike
             Dark matter masses.
-        mvs: ArrayLike
+        mss: ArrayLike
             Mediator masses. Must be same shape as mx.
         semi_analytic: bool
             If true, a appoximate scheme is used to compute the relic density.
             Otherwise, the Boltzmann equation is solved.
-        semi_analytic: bool
-            If true, a appoximate scheme is used to compute the relic density.
-            Otherwise, the Boltzmann equation is solved.
-        log_eps_min: float
-            Log of the minimum value of epsilon used to search for the relic
-            density.
-        log_eps_max: float
-            Log of the maximum value of epsilon used to search for the relic
-            density.
+        stheta: float = 1
+            Value to which stheta is fixed.
+            TODO: when would this matter?
+        vx: float, optional
+            Dark matter velocity.
 
         Returns
         -------
@@ -284,198 +270,165 @@ class Constraints(KineticMixing):
         """
         svs = np.zeros_like(mxs)
 
-        def residual(log_eps):
-            """
-            Compute the difference between the relic density and the observed
-            dark matter relic density for use in root solving.
-            """
-            self.eps = 10 ** log_eps
-            return (
-                relic_density(self, semi_analytic=semi_analytic)
-                - omega_h2_cdm / dimensionless_hubble_constant ** 2
-            )
-
         for i, mx in enumerate(tqdm(mxs, desc="relic-density")):
+            self.stheta = stheta
             self.mx = mx
-            self.mv = mvs[i]
-            try:
-                root = root_scalar(residual, bracket=[log_eps_min, log_eps_max])
-                self.eps = 10 ** (root.root)
-                svs[i] = (
-                    vx
-                    * sv_inv_MeV_to_cm3_per_s
-                    * self.annihilation_cross_sections(
-                        2 * self.mx * (1 + 0.5 * vx ** 2)
-                    )["total"]
+            self.ms = mss[i]
+
+            def residual(log10_gsxx):
+                """
+                Compute the difference between the relic density and the observed
+                dark matter relic density for use in root solving.
+                """
+                self.gsxx = 10 ** log10_gsxx
+                return (
+                    relic_density(self, semi_analytic=semi_analytic)
+                    - omega_h2_cdm / dimensionless_hubble_constant ** 2
                 )
 
+            try:
+                # Chosen by trial and error
+                if self.ms < self.mx:
+                    bracket = [-5, np.log10(4 * np.pi)]
+                else:
+                    bracket = [-4, 8]
+
+                root = root_scalar(residual, bracket=bracket, xtol=1e-100, rtol=1e-3)
+                self.gsxx = 10 ** (root.root)
+                svs[i] = (
+                    self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))[
+                        "total"
+                    ]
+                    * vx
+                    * sv_inv_MeV_to_cm3_per_s
+                )
             except ValueError:
                 svs[i] = None
 
         return svs
 
-    def __babar_constraint(self, alphad: float, vx: float):
-        """
-        Compute the value of <sigma*v> constrained by BaBar.
-
-        Parameters
-        ----------
-        alphad: float
-            Alpha for the dark U(1).
-        vx: float
-            Velocity of the DM.
-
-        Returns
-        -------
-        sigma_v: float
-            The constraint on <sigma*v> from BaBar.
-        """
-        gvxx = self.gvxx
-        eps = self.eps
-        if self.mx * 1e-3 > babar_data.T[0][-1]:
-            return np.inf
-        if self.mx * 1e-3 < babar_data.T[0][0]:
-            y = babar_data.T[1][0]
-        else:
-            y = babar_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
-        # y = eps**2 * alphad / 3**4
-        self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
-        sv = (
-            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
-            * vx
-        )
-        self.eps = eps
-        self.gvxx = gvxx
-        return sv * sv_inv_MeV_to_cm3_per_s
-
-    def __lsnd_constraint(self, alphad: float, vx: float):
-        """
-        Compute the value of <sigma*v> constrained by LSND.
-
-        Parameters
-        ----------
-        alphad:float
-            Alpha for the dark U(1).
-        vx: float
-            Velocity of the DM.
-
-        Returns
-        -------
-        sigma_v: float
-            The constraint on <sigma*v> from LSND.
-        """
-        gvxx = self.gvxx
-        eps = self.eps
-        if self.mx * 1e-3 > lsnd_data.T[0][-1]:
-            return np.inf
-        if self.mx * 1e-3 < lsnd_data.T[0][0]:
-            y = lsnd_data.T[1][0]
-        else:
-            y = lsnd_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
-        # y = eps**2 * alphad / 3**4
-        self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
-        sv = (
-            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
-            * vx
-        )
-        self.eps = eps
-        self.gvxx = gvxx
-
-        return sv * sv_inv_MeV_to_cm3_per_s
-
-    def __e137_constraint(self, alphad: float, vx: float):
-        """
-        Compute the value of <sigma*v> constrained by E137.
-
-        Parameters
-        ----------
-        alphad:float
-            Alpha for the dark U(1).
-        vx: float
-            Velocity of the DM.
-
-        Returns
-        -------
-        sigma_v: float
-            The constraint on <sigma*v> from E137.
-        """
-        gvxx = self.gvxx
-        eps = self.eps
-        if self.mx * 1e-3 > e137_data.T[0][-1]:
-            return np.inf
-        if self.mx * 1e-3 < e137_data.T[0][0]:
-            y = e137_data.T[1][0]
-        else:
-            y = e137_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
-        # y = eps**2 * alphad / 3**4
-        self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
-        sv = (
-            self.annihilation_cross_sections(2 * self.mx * (1 + 0.5 * vx ** 2))["total"]
-            * vx
-        )
-        self.eps = eps
-        self.gvxx = gvxx
-        return sv * sv_inv_MeV_to_cm3_per_s
-
-    def compute_pheno_constraints(
+    def consistent_with_pheno_constraints(
         self,
-        mxs: ArrayLike,
-        mvs: ArrayLike,
+        mx_mg: ArrayLike,
+        ms_mg: ArrayLike,
+        sv_mg: ArrayLike,
         experiments: Optional[List[str]] = None,
-        alphad: float = 0.5,
         vx: float = 1e-3,
-    ):
+        gsxx_max: float = 4 * np.pi,
+    ) -> ArrayLike:
         """
-        Compute the constraints from non-telescope experiments.
+        Checks whether a set of (mx, ms, <sigma * v>) points are consistent
+        with pheno constraints. This is done by establishing the minimum and
+        maximum stheta value consistent with the cross section and determining
+        whether any points in this range are allowed by pheno constraints.
 
         Parameters
         ----------
-        mxs: array-like
-            Dark matter masses.
-        mvs: array-like
-            Mediator masses. Must be same shape as mx.
+        mx_mg: array-like
+            2D array of dark matter masses.
+        ms_mg: array-like
+            2D array of mediator masses.
+        sv_mg: array-like
+            2D array of <sigma * v> values at which to check consistency [cm^3
+            / s].
         experiments: List[str], optional
             List of the non-telescope experiments to use in computing
-            constraints. Default is ['babar', 'lsnd', 'e137'].
-        alphad: float, optional
-            Value of alpha for the dark U(1). Default is 0.5.
+            constraints. Default is all available through `self.constraints()`.
         vx: float, optional
             Dark matter velocity.
+        gsxx_max: float, optional
+            Maximum value of gsxx for which to check compatibility.
 
         Returns
         -------
-        constraints: Dict[str, ArrayLike]
-            Dictionary containing the constraints on <sigma*v> from
-            non-telescope experiments.
+        constraints: ArrayLike
+            2D boolean array indicating which points are consistent with pheno
+            constraints.
 
         """
         if experiments is None:
-            experiments = ["babar", "lsnd", "e137"]
+            experiments = list(self.constraints().keys())
 
-        constraints = {}
+        def _helper(mx, ms, sv):
+            assert ms > mx
+            self.mx, self.ms = mx, ms
 
-        if "babar" in experiments:
-            constraints["babar"] = np.zeros_like(mxs)
-            for i, mx in enumerate(tqdm(mxs, desc="babar")):
-                self.mx = mx
-                self.mv = mvs[i]
-                constraints["babar"][i] = self.__babar_constraint(alphad, vx)
+            # Reference cross section
+            self.gsxx, self.stheta = 1, 1
+            sv_1 = (
+                self.annihilation_cross_sections(2 * mx * (1 + 0.5 * vx ** 2))["total"]
+                * vx
+                * sv_inv_MeV_to_cm3_per_s
+            )
 
-        if "lsnd" in experiments:
-            constraints["lsnd"] = np.zeros_like(mxs)
-            for i, mx in enumerate(tqdm(mxs, desc="lsnd ")):
-                self.mx = mx
-                self.mv = mvs[i]
-                constraints["lsnd"][i] = self.__lsnd_constraint(alphad, vx)
+            # Find smallest stheta compatible with <sigma * v> for given
+            # gsxx_max. This assumes sv ~ (gsxx * stheta)**2, which is the case
+            # when ms > mx.
+            stheta_min = np.sqrt(sv / sv_1) / gsxx_max
 
-        if "e137" in experiments:
-            constraints["e137"] = np.zeros_like(mxs)
-            for i, mx in enumerate(tqdm(mxs, desc="e137 ")):
-                self.mx = mx
-                self.mv = mvs[i]
-                constraints["e137"][i] = self.__e137_constraint(alphad, vx)
+            if stheta_min > 0.999:
+                # No viable stheta values
+                return -1e100
 
-        return constraints
+            # Otherwise find the weakest constraint over the compatible stheta
+            # range
+            stheta_grid = np.geomspace(stheta_min, 0.999, 20)
+            constr_mins = np.full(stheta_grid.shape, np.inf)
+            gsxxs = np.zeros(stheta_grid.shape)
+            for i, stheta in enumerate(stheta_grid):
+                self.stheta = stheta
+                self.gsxx = np.sqrt(sv / sv_1) / self.stheta
+                # Constraint comes from whichever experiment provides the
+                # strongest constraint
+                constr_mins[i] = np.min(
+                    [
+                        fn()
+                        for name, fn in self.constraints().items()
+                        if name in experiments
+                    ]
+                )
+
+            return constr_mins.max()
+
+        return np.vectorize(_helper)(mx_mg, ms_mg, sv_mg)
+
+    def sv_max(
+        self,
+        mxs: ArrayLike,
+        mss: ArrayLike,
+        vx: float = 1e-3,
+        gsxx_max: float = 4 * np.pi,
+    ) -> ArrayLike:
+        """
+        Computes largest possible value of <sigma * v>.
+
+        Parameters
+        ----------
+        mxs: ArrayLike
+            Dark matter masses.
+        mss: ArrayLike
+            Mediator masses.
+        vx: float, optional
+            Dark matter velocity.
+        gsxx_max: float, optional
+            Value of gsxx.
+
+        Returns
+        -------
+        svs: ArrayLike
+            Largest <sigma * v> values at each dark matter and mediator mass
+            [cm^3 / s].
+        """
+        self.gsxx, self.stheta = gsxx_max, 1
+
+        svs = np.zeros_like(mxs)
+        for i, mx in enumerate(mxs):
+            self.mx = mx
+            self.ms = mss[i]
+            svs[i] = (
+                self.annihilation_cross_sections(2 * mx * (1 + 0.5 * vx ** 2))["total"]
+                * vx
+                * sv_inv_MeV_to_cm3_per_s
+            )
+
+        return svs
