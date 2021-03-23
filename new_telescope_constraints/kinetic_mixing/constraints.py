@@ -3,7 +3,7 @@ Module for generating constraints on the Hazma kinetic-mixing model.
 """
 
 import warnings
-from collections import namedtuple
+from math import pi
 
 from tqdm.auto import tqdm
 import numpy as np
@@ -12,6 +12,7 @@ from typing import List, Optional, Dict
 from scipy.optimize import root_scalar
 from scipy.interpolate import interp1d
 
+from hazma.flux_measurement import FluxMeasurement
 from hazma.parameters import (
     omega_h2_cdm,
     sv_inv_MeV_to_cm3_per_s,
@@ -25,7 +26,6 @@ from hazma.gamma_ray_parameters import (
     BackgroundModel,
     default_bg_model,
     # targets
-    gc_targets,
     gc_targets_optimistic,
     # effective areas
     effective_area_adept,
@@ -47,9 +47,13 @@ from hazma.gamma_ray_parameters import (
     energy_res_pangu,
     # diffuse
     comptel_diffuse,
+    comptel_diffuse_targets_optimistic,
     fermi_diffuse,
+    fermi_diffuse_targets_optimistic,
     integral_diffuse,
+    integral_diffuse_targets_optimistic,
     egret_diffuse,
+    egret_diffuse_targets_optimistic,
 )
 
 EFFECTIVE_AREAS = {
@@ -74,6 +78,8 @@ ENERGY_RESOLUTIONS = {
     "pangu": energy_res_pangu,
 }
 
+PROFILE = "ein"
+
 babar_data = np.genfromtxt("data/BaBar.dat", delimiter=",")
 lsnd_data = np.genfromtxt("data/LSND.dat", delimiter=",")
 e137_data = np.genfromtxt("data/E137.dat", delimiter=",")
@@ -93,7 +99,7 @@ class Constraints(KineticMixing):
         super().__init__(mx, mv, gvxx, eps)
 
         # The baseline observation time for new telescopes
-        self._observation_time = 1e6
+        self._observation_time = 3 * 365.25 * 24 * 60 * 60  # 3 yr
         # Baseline existing telescopes
         self._existing_telescopes = {
             "comptel": comptel_diffuse,
@@ -101,6 +107,19 @@ class Constraints(KineticMixing):
             "fermi": fermi_diffuse,
             "integral": integral_diffuse,
         }
+        # Swap in optimistic targets
+        self._existing_telescopes[
+            "comptel"
+        ].target = comptel_diffuse_targets_optimistic[PROFILE]
+        self._existing_telescopes["egret"].target = egret_diffuse_targets_optimistic[
+            PROFILE
+        ]
+        self._existing_telescopes["fermi"].target = fermi_diffuse_targets_optimistic[
+            PROFILE
+        ]
+        self._existing_telescopes[
+            "integral"
+        ].target = integral_diffuse_targets_optimistic[PROFILE]
         # Baseline new telescopes
         self._new_telescopes = [
             "adept",
@@ -113,7 +132,7 @@ class Constraints(KineticMixing):
             "pangu",
         ]
         # Baseline target (Galactic center)
-        self._target_params = gc_targets_optimistic["ein"]["1 arcmin cone"]
+        self._target_params = gc_targets_optimistic[PROFILE]["10x10 deg box"]
         # Baseline background model
         self._bg_model = BackgroundModel(
             [0, 1e5], lambda e: 7 * default_bg_model.dPhi_dEdOmega(e)
@@ -127,7 +146,7 @@ class Constraints(KineticMixing):
         return self._observation_time
 
     @property
-    def existing_telescopes(self) -> List[str]:
+    def existing_telescopes(self) -> Dict[str, FluxMeasurement]:
         """
         The existing telescopes using for constraining.
         """
@@ -158,7 +177,7 @@ class Constraints(KineticMixing):
         self,
         mxs: ArrayLike,
         mvs: ArrayLike,
-        existing_telescopes: Optional[List[str]] = None,
+        existing_telescopes: Optional[Dict[str, FluxMeasurement]] = None,
         new_telescopes: Optional[List[str]] = None,
     ) -> Dict[str, ArrayLike]:
         """
@@ -170,7 +189,7 @@ class Constraints(KineticMixing):
             Dark matter masses.
         mvs: ArrayLike
             Mediator masses.
-        existing_telescopes: List[str], optional
+        existing_telescopes: Dict[str, FluxMeasurement], optional
             List of existing telescopes. If None, comptel, egret, fermi and
             integral are used.
         new_telescopes: List[str], optional
@@ -236,7 +255,7 @@ class Constraints(KineticMixing):
         constraints: ArrayLike
             Array of the constraints on <sigma*v> from CMB.
         """
-        constraints = np.zeros_like(mxs)
+        constraints: np.ndarray = np.zeros_like(mxs)
         for i, mx in enumerate(tqdm(mxs, desc="cmb")):
             self.mx = mx
             self.mv = mvs[i]
@@ -282,7 +301,7 @@ class Constraints(KineticMixing):
             Values of the annihilation cross section such that the dark matter
             relic density is the observed value.
         """
-        svs = np.zeros_like(mxs)
+        svs: np.ndarray = np.zeros_like(mxs)
 
         def residual(log_eps):
             """
@@ -338,7 +357,7 @@ class Constraints(KineticMixing):
             y = babar_data.T[1][0]
         else:
             y = babar_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
+        self.gvxx = np.sqrt(4 * pi * alphad)
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (
@@ -373,7 +392,7 @@ class Constraints(KineticMixing):
             y = lsnd_data.T[1][0]
         else:
             y = lsnd_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
+        self.gvxx = np.sqrt(4 * pi * alphad)
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (
@@ -409,7 +428,7 @@ class Constraints(KineticMixing):
             y = e137_data.T[1][0]
         else:
             y = e137_interp(self.mx * 1e-3)
-        self.gvxx = np.sqrt(4.0 * np.pi * alphad)
+        self.gvxx = np.sqrt(4 * pi * alphad)
         # y = eps**2 * alphad / 3**4
         self.eps = np.sqrt((self.mx / self.mv) ** 4 * y / alphad)
         sv = (

@@ -3,15 +3,15 @@ Module for generating constraints on the Hazma kinetic-mixing model.
 """
 
 import warnings
-from collections import namedtuple
+from math import pi, sqrt
 
 from tqdm.auto import tqdm
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import List, Optional, Dict
 from scipy.optimize import root_scalar
-from scipy.interpolate import interp1d
 
+from hazma.flux_measurement import FluxMeasurement
 from hazma.parameters import (
     omega_h2_cdm,
     sv_inv_MeV_to_cm3_per_s,
@@ -25,7 +25,6 @@ from hazma.gamma_ray_parameters import (
     BackgroundModel,
     default_bg_model,
     # targets
-    gc_targets,
     gc_targets_optimistic,
     # effective areas
     effective_area_adept,
@@ -47,9 +46,13 @@ from hazma.gamma_ray_parameters import (
     energy_res_pangu,
     # diffuse
     comptel_diffuse,
+    comptel_diffuse_targets_optimistic,
     fermi_diffuse,
+    fermi_diffuse_targets_optimistic,
     integral_diffuse,
+    integral_diffuse_targets_optimistic,
     egret_diffuse,
+    egret_diffuse_targets_optimistic,
 )
 
 EFFECTIVE_AREAS = {
@@ -74,6 +77,8 @@ ENERGY_RESOLUTIONS = {
     "pangu": energy_res_pangu,
 }
 
+PROFILE = "ein"
+
 
 class Constraints(HiggsPortal):
     """
@@ -84,7 +89,7 @@ class Constraints(HiggsPortal):
         super().__init__(mx, ms, gsxx, stheta)
 
         # The baseline observation time for new telescopes
-        self._observation_time = 1e6
+        self._observation_time = 3 * 365.25 * 24 * 60 * 60  # 3 yr
         # Baseline existing telescopes
         self._existing_telescopes = {
             "comptel": comptel_diffuse,
@@ -92,6 +97,19 @@ class Constraints(HiggsPortal):
             "fermi": fermi_diffuse,
             "integral": integral_diffuse,
         }
+        # Swap in optimistic targets
+        self._existing_telescopes[
+            "comptel"
+        ].target = comptel_diffuse_targets_optimistic[PROFILE]
+        self._existing_telescopes["egret"].target = egret_diffuse_targets_optimistic[
+            PROFILE
+        ]
+        self._existing_telescopes["fermi"].target = fermi_diffuse_targets_optimistic[
+            PROFILE
+        ]
+        self._existing_telescopes[
+            "integral"
+        ].target = integral_diffuse_targets_optimistic[PROFILE]
         # Baseline new telescopes
         self._new_telescopes = [
             "adept",
@@ -104,7 +122,7 @@ class Constraints(HiggsPortal):
             "pangu",
         ]
         # Baseline target (Galactic center)
-        self._target_params = gc_targets_optimistic["ein"]["1 arcmin cone"]
+        self._target_params = gc_targets_optimistic[PROFILE]["10x10 deg box"]
         # Baseline background model
         self._bg_model = BackgroundModel(
             [0, 1e5], lambda e: 7 * default_bg_model.dPhi_dEdOmega(e)
@@ -118,7 +136,7 @@ class Constraints(HiggsPortal):
         return self._observation_time
 
     @property
-    def existing_telescopes(self) -> List[str]:
+    def existing_telescopes(self) -> Dict[str, FluxMeasurement]:
         """
         The existing telescopes using for constraining.
         """
@@ -149,7 +167,7 @@ class Constraints(HiggsPortal):
         self,
         mxs: ArrayLike,
         mss: ArrayLike,
-        existing_telescopes: Optional[List[str]] = None,
+        existing_telescopes: Optional[Dict[str, FluxMeasurement]] = None,
         new_telescopes: Optional[List[str]] = None,
     ) -> Dict[str, ArrayLike]:
         """
@@ -161,7 +179,7 @@ class Constraints(HiggsPortal):
             Dark matter masses.
         mss: ArrayLike
             Mediator masses.
-        existing_telescopes: List[str], optional
+        existing_telescopes: Dict[str, FluxMeasurement], optional
             List of existing telescopes. If None, comptel, egret, fermi and
             integral are used.
         new_telescopes: List[str], optional
@@ -227,7 +245,7 @@ class Constraints(HiggsPortal):
         constraints: ArrayLike
             Array of the constraints on <sigma*v> from CMB.
         """
-        constraints = np.zeros_like(mxs)
+        constraints: np.ndarray = np.zeros_like(mxs)
         for i, mx in enumerate(tqdm(mxs, desc="cmb")):
             self.mx = mx
             self.ms = mss[i]
@@ -268,7 +286,7 @@ class Constraints(HiggsPortal):
             Values of the annihilation cross section such that the dark matter
             relic density is the observed value.
         """
-        svs = np.zeros_like(mxs)
+        svs: np.ndarray = np.zeros_like(mxs)
 
         for i, mx in enumerate(tqdm(mxs, desc="relic-density")):
             self.stheta = stheta
@@ -289,7 +307,7 @@ class Constraints(HiggsPortal):
             try:
                 # Chosen by trial and error
                 if self.ms < self.mx:
-                    bracket = [-5, np.log10(4 * np.pi)]
+                    bracket = [-5, np.log10(4 * pi)]
                 else:
                     bracket = [-4, 8]
 
@@ -314,7 +332,7 @@ class Constraints(HiggsPortal):
         sv_mg: ArrayLike,
         experiments: Optional[List[str]] = None,
         vx: float = 1e-3,
-        gsxx_max: float = 4 * np.pi,
+        gsxx_max: float = 4 * pi,
     ) -> ArrayLike:
         """
         Checks whether a set of (mx, ms, <sigma * v>) points are consistent
@@ -364,7 +382,7 @@ class Constraints(HiggsPortal):
             # Find smallest stheta compatible with <sigma * v> for given
             # gsxx_max. This assumes sv ~ (gsxx * stheta)**2, which is the case
             # when ms > mx.
-            stheta_min = np.sqrt(sv / sv_1) / gsxx_max
+            stheta_min = sqrt(sv / sv_1) / gsxx_max
 
             if stheta_min > 0.999:
                 # No viable stheta values
@@ -374,7 +392,6 @@ class Constraints(HiggsPortal):
             # range
             stheta_grid = np.geomspace(stheta_min, 0.999, 20)
             constr_mins = np.full(stheta_grid.shape, np.inf)
-            gsxxs = np.zeros(stheta_grid.shape)
             for i, stheta in enumerate(stheta_grid):
                 self.stheta = stheta
                 self.gsxx = np.sqrt(sv / sv_1) / self.stheta
@@ -397,7 +414,7 @@ class Constraints(HiggsPortal):
         mxs: ArrayLike,
         mss: ArrayLike,
         vx: float = 1e-3,
-        gsxx_max: float = 4 * np.pi,
+        gsxx_max: float = 4 * pi,
     ) -> ArrayLike:
         """
         Computes largest possible value of <sigma * v>.
@@ -421,7 +438,7 @@ class Constraints(HiggsPortal):
         """
         self.gsxx, self.stheta = gsxx_max, 1
 
-        svs = np.zeros_like(mxs)
+        svs: np.ndarray = np.zeros_like(mxs)
         for i, mx in enumerate(mxs):
             self.mx = mx
             self.ms = mss[i]
