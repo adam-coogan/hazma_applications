@@ -1,3 +1,6 @@
 [submodule "pbh/PBHbounds"]
 	path = pbh/PBHbounds
 	url = https://github.com/bradkav/PBHbounds
+[submodule "gecko"]
+	path = gecko
+	url = https://github.com/LoganAMorrison/gecko.git
