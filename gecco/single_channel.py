@@ -4,22 +4,13 @@ import pathlib
 import click
 import matplotlib.pyplot as plt
 import numpy as np
-from constrain import V_MW, X_KD, get_cmb_limit, get_gamma_ray_limits
-from hazma.cmb import vx_cmb
+from constrain import get_cmb_limit, get_gamma_ray_limits
 from hazma.single_channel import SingleChannelAnn, SingleChannelDec
 from rich.progress import Progress
-from utils import (
-    ALPHA_EXISTING,
-    COLOR_DICT,
-    configure_ticks,
-    make_legend_ax,
-    nested_dict_to_string,
-)
+from utils import configure_ticks, make_legend_ax, nested_dict_to_string, plot_lims
 
 MX_RANGES = {"e e": (1.5, 1e4), "g g": (1e-1, 1e2), "mu mu": (220, 1e4)}
 SCRIPT_PATH = pathlib.Path(__file__).parent.resolve()
-# DEFAULT_LIM_PATH = os.path.join(SCRIPT_PATH, "outputs", "single-channel-dec.npz")
-# DEFAULT_FIG_PATH = os.path.join(SCRIPT_PATH, "figures", "single-channel-dec.pdf")
 FS_TO_TITLE = {
     "e e": r"$e^+ e^-$",
     "g g": r"$\gamma \gamma$",
@@ -87,35 +78,6 @@ def constrain(kind, n_mxs, save_path, print_output):
     print(f"saved limits to {save_path}")
 
 
-def plot_lims(ax, mxs, lims, kind):
-    for label, ls in lims["gecco"].items():
-        ax.loglog(
-            mxs, ls if kind == "ann" else 1 / ls, label=label, color=COLOR_DICT[label]
-        )
-
-    for label, ls in lims["existing"].items():
-        ax.fill_between(
-            mxs,
-            ls if kind == "ann" else 1 / ls,
-            1e100 if kind == "ann" else -1e100,
-            alpha=ALPHA_EXISTING,
-            label=label,
-            color=COLOR_DICT[label],
-        )
-
-    if kind == "ann":
-        v_ratios = np.array([(V_MW / vx_cmb(mx, X_KD)) ** 2 for mx in mxs])
-        ax.plot(
-            mxs, v_ratios * lims["CMB"], ls="--", lw=1, c="k", label=r"CMB ($p$-wave)"
-        )
-        ax.plot(mxs, lims["CMB"], ls="-.", c="k", lw=1, label=r"CMB ($s$-wave)")
-    else:
-        if "CMB" in lims:
-            ax.plot(mxs, 1 / lims["CMB"], ls="--", c="k", lw=1, label="CMB")
-
-    return ax
-
-
 @cli.command()
 @click.option("--ann", "kind", flag_value="ann")
 @click.option("--dec", "kind", flag_value="dec")
@@ -149,7 +111,9 @@ def plot(kind, lim_path, save_path):
         ax.set_title(FS_TO_TITLE[fs])
 
     # Can use any final state to get GECCO and existing target names
-    make_legend_ax(axes[1, 1], lims["e e"]["gecco"], lims["e e"]["existing"])
+    make_legend_ax(
+        axes[1, 1], lims["e e"]["gecco"].keys(), lims["e e"]["existing"].keys()
+    )
     fig.tight_layout()
     fig.savefig(save_path)
     plt.close()

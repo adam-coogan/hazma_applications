@@ -4,7 +4,6 @@ import hazma.gamma_ray_parameters as grp
 import numpy as np
 from hazma.theory import TheoryCMB, TheoryGammaRayLimits
 from rich.progress import Progress
-from utils import get_progress_update
 
 X_KD = 1e-6
 V_MW = 1e-3
@@ -29,6 +28,13 @@ EXISTING_MEASUREMENTS = {
     "Fermi": grp.fermi_diffuse,
     "INTEGRAL": grp.integral_diffuse,
 }
+
+
+def get_progress_update(progress: Optional[Progress], desc: str, total: int):
+    if progress is None:
+        return lambda: None
+    task = progress.add_task(desc, total=total)
+    return lambda: progress.update(task, advance=1, refresh=True)
 
 
 def limit_gecco(
