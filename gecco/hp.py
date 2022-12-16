@@ -181,8 +181,9 @@ def relic(n_mxs):
 @click.option("--n-svs", default=95)
 def constrain(n_mxs, save_path, print_output, n_svs):
     lims = {}
-    with Progress() as progress:
-        for ann_to, mx_range in MX_RANGES.items():
+    for ann_to, mx_range in MX_RANGES.items():
+        print(f"annihilation to {ann_to}")
+        with Progress() as progress:
             model = HiggsPortal(1.0, 1.0, 1.0, 1.0)
             update_model = partial(_update_model, ann_to=ann_to)
 

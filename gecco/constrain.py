@@ -1,26 +1,38 @@
-from typing import Any, Callable, Optional
+import warnings
+from typing import Any, Callable, Optional, Tuple
 
 import hazma.gamma_ray_parameters as grp
 import numpy as np
-from hazma.theory import TheoryCMB, TheoryGammaRayLimits
+from constants import TOBS, V_MW, X_KD
+from hazma.parameters import omega_h2_cdm
+from hazma.relic_density import relic_density
+from hazma.theory import TheoryCMB, TheoryGammaRayLimits, TheoryAnn, TheoryDec
 from rich.progress import Progress
+from scipy.optimize import root_scalar
+from utils import get_progress_update, sigmav
 
-X_KD = 1e-6
-V_MW = 1e-3
-N_MXS = 100
-TOBS = 1e6  # s
 GECCO_BG_MODELS = {
     "GECCO (GC 1', NFW)": grp.GalacticCenterBackgroundModel(),
     "GECCO (GC 1', Einasto)": grp.GalacticCenterBackgroundModel(),
     "GECCO (Draco 1')": grp.GeccoBackgroundModel(),
     "GECCO (M31 1')": grp.GeccoBackgroundModel(),
+    r"GECCO (GC 5$^\circ$, NFW)": grp.GalacticCenterBackgroundModel(),
+    r"GECCO (GC 5$^\circ$, Einasto)": grp.GalacticCenterBackgroundModel(),
+    r"GECCO (Draco $5^\circ$)": grp.GeccoBackgroundModel(),
+    r"GECCO (M31 $5^\circ$)": grp.GeccoBackgroundModel(),
 }
 
-GECCO_TARGETS = {
+GECCO_TARGETS_ANN = {
     "GECCO (GC 1', NFW)": grp.gc_targets["nfw"]["1 arcmin cone"],
     "GECCO (GC 1', Einasto)": grp.gc_targets_optimistic["ein"]["1 arcmin cone"],
     "GECCO (Draco 1')": grp.draco_targets["nfw"]["1 arcmin cone"],
     "GECCO (M31 1')": grp.m31_targets["nfw"]["1 arcmin cone"],
+}
+GECCO_TARGETS_DEC = {
+    r"GECCO (GC 5$^\circ$, NFW)": grp.gc_targets["nfw"]["5 deg cone"],
+    r"GECCO (GC 5$^\circ$, Einasto)": grp.gc_targets_optimistic["ein"]["5 deg cone"],
+    r"GECCO (Draco $5^\circ$)": grp.draco_targets["nfw"]["5 deg cone"],
+    r"GECCO (M31 $5^\circ$)": grp.m31_targets["nfw"]["5 deg cone"],
 }
 EXISTING_MEASUREMENTS = {
     "COMPTEL": grp.comptel_diffuse,
@@ -28,13 +40,6 @@ EXISTING_MEASUREMENTS = {
     "Fermi": grp.fermi_diffuse,
     "INTEGRAL": grp.integral_diffuse,
 }
-
-
-def get_progress_update(progress: Optional[Progress], desc: str, total: int):
-    if progress is None:
-        return lambda: None
-    task = progress.add_task(desc, total=total)
-    return lambda: progress.update(task, advance=1, refresh=True)
 
 
 def limit_gecco(
@@ -104,6 +109,13 @@ def get_gamma_ray_limits(
     ] = lambda model, mx: setattr(model, "mx", mx),
     progress: Optional[Progress] = None,
 ):
+    if isinstance(model, TheoryAnn):
+        gecco_targets = GECCO_TARGETS_ANN
+    elif isinstance(model, TheoryDec):
+        gecco_targets = GECCO_TARGETS_DEC
+    else:
+        raise ValueError("invalid model class")
+
     lims_existing = {}
     for name, measurement in EXISTING_MEASUREMENTS.items():
         progress_update = get_progress_update(progress, name, len(params))
@@ -116,7 +128,8 @@ def get_gamma_ray_limits(
         )
 
     lims_gecco = {}
-    for name, target in GECCO_TARGETS.items():
+
+    for name, target in gecco_targets.items():
         progress_update = get_progress_update(progress, name, len(params))
         lims_gecco[name] = limit_gecco(
             model,
@@ -148,5 +161,46 @@ def get_cmb_limit(
     for i, param in enumerate(params):
         update_model(model, param)
         lims[i] = model.cmb_limit(x_kd)
+        progress_update()
+    return lims
+
+
+def get_relic_density_limit_helper(
+    model, param_name, param_range=(1e-5, 4 * np.pi), vx=V_MW
+):
+    lb = np.log10(param_range[0])
+    ub = np.log10(param_range[1])
+
+    def f(log10_gsxx):
+        setattr(model, param_name, 10**log10_gsxx)
+        return relic_density(model, semi_analytic=True) - omega_h2_cdm
+
+    try:
+        root = root_scalar(f, bracket=[lb, ub], method="brentq")
+        if not root.converged:
+            warnings.warn(f"root_scalar did not converge. Flag: {root.flag}")
+        model.gsxx = 10**root.root
+        return sigmav(model, vx)
+    except ValueError as e:
+        warnings.warn(f"Error encountered: {e}. Returning nan", RuntimeWarning)
+        return np.nan
+
+
+def get_relic_density_limit(
+    model,
+    param_name,
+    other_param_grid,
+    param_range: Tuple[float, float] = (1e-5, 4 * np.pi),
+    vx=V_MW,
+    update_model=lambda model, mx: setattr(model, "mx", mx),
+    progress: Optional[Progress] = None,
+):
+    progress_update = get_progress_update(
+        progress, "Relic density", len(other_param_grid)
+    )
+    lims = np.zeros(len(other_param_grid))
+    for i, param in enumerate(other_param_grid):
+        update_model(model, param)
+        lims[i] = get_relic_density_limit_helper(model, param_name, param_range, vx)
         progress_update()
     return lims
