@@ -250,11 +250,17 @@ def plot(lim_path, save_path):
         print(f"the constraint file '{lim_path}' has not yet been generated")
         return
 
+    # Replace gamma-ray constraints with their envelope
+    for ann_to in lims:
+        lims[ann_to]["existing"] = {
+            r"$\gamma$-ray telescopes": curve_outline(lims[ann_to]["existing"])
+        }
+
     if save_path is None:
         save_path = os.path.join(SCRIPT_PATH, "figures", "hp.pdf")
 
     fig, axs = plt.subplots(
-        1, 3, figsize=(10, 3), gridspec_kw={"width_ratios": [1.5, 1.5, 1]}
+        1, 3, figsize=(10, 3.5), gridspec_kw={"width_ratios": [1.5, 1.5, 1]}
     )
 
     for (ann_to, ls), ax in zip(lims.items(), axs):
@@ -279,14 +285,14 @@ def plot(lim_path, save_path):
 
     ax = axs[0]
     add_gsxx_contour(ax, lims["med"]["mxs"], MS_OVER_MX["med"], 1e-2, 1)
-    add_gsxx_label(ax, 100, 2e-32, r"$10^{-2}$", rotation=-25)
+    add_gsxx_label(ax, 105, 1.5e-32, r"$10^{-2}$", rotation=-25)
     add_gsxx_contour(ax, lims["med"]["mxs"], MS_OVER_MX["med"], 1e-4, 1)
     add_gsxx_label(ax, 2, 5e-37, r"$10^{-4}$", rotation=-25)
     ax.set_ylabel(r"$\langle \sigma v \rangle_{\bar{\chi}\chi,0}$ [cm$^3$/s]")
 
     ax = axs[1]
     add_gsxx_contour(ax, lims["med"]["mxs"], MS_OVER_MX["sm"], 4 * np.pi, 1)
-    add_gsxx_label(ax, 9, 2e-33, r"$4\pi$", r"$1$")
+    add_gsxx_label(ax, 9, 5e-33, r"$4\pi$", r"$1$", rotation=0)
 
     # Can use any final state to get GECCO and existing target names
     # HACK to get pheno patch in legend

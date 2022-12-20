@@ -81,61 +81,6 @@ def get_pheno_limit(
         return {ex: sigma_vs[:, j] for j, ex in enumerate(data)}
 
 
-# def get_pheno_limit_helper(hp, sv, vx=V_MW):
-#     """
-#     Checks whether *some* value of stheta is consistent with pheno constraints
-#     at a given (mx, <sigma v>) point. If the returned value is negative, it is
-#     inconsistent.
-#     """
-#     if hp.ms <= hp.mx:
-#         raise ValueError("ms must be larger than mx so the DM annihilates into SM")
-#     gsxx_max = 4 * np.pi
-#     # <sigma v> with couplings set to 1
-#     hp.gsxx = 1
-#     hp.stheta = 1
-#     sv_1 = sigmav(hp, vx)
-#
-#     # Find smallest stheta compatible with <sigma v> for the given
-#     # gsxx_max
-#     stheta_min = np.sqrt(sv / sv_1) / gsxx_max
-#     if stheta_min > 0.999:
-#         return -1e100
-#
-#     stheta_grid = np.geomspace(stheta_min, 0.999, 50)
-#     constr_mins = np.full_like(stheta_grid, np.inf)
-#     gsxxs = np.zeros_like(stheta_grid)
-#     for i, stheta in enumerate(stheta_grid):
-#         hp.stheta = stheta
-#         hp.gsxx = np.sqrt(sv / sv_1) / hp.stheta
-#         gsxxs[i] = hp.gsxx
-#         # Figure out strongest constraint
-#         constr_mins[i] = np.min([fn() for fn in hp.constraints().values()])
-#
-#     # Check if (mx, ms, sv) point is allowed for some (gsxx, stheta) combination
-#     return constr_mins.max()
-
-
-# def get_pheno_limit(
-#     hp,
-#     mxs,
-#     ms_mx_ratio,
-#     sv_range: Tuple[float, float] = YLIMS["sm"],
-#     n_svs: int = 95,
-#     progress: Optional[Progress] = None,
-#     vx=V_MW,
-# ):
-#     progress_update = get_progress_update(progress, "Pheno", len(mxs))
-#     svs = np.geomspace(*sv_range, num=n_svs)
-#     lims = np.zeros(len(mxs))
-#     for i, mx in enumerate(mxs):
-#         hp.mx = mx
-#         hp.ms = ms_mx_ratio * mx
-#         vals = np.vectorize(partial(get_pheno_limit_helper, hp, vx=vx))(svs)
-#         lims[i] = svs[np.argmin(vals > 0)]
-#         progress_update()
-#     return lims
-
-
 @cli.command()
 @click.option("--n-mxs", default=3)
 def relic(n_mxs):
@@ -153,25 +98,6 @@ def relic(n_mxs):
     print(nested_dict_to_string(lims))
 
 
-# @cli.command()
-# @click.option("--n-mxs", default=3)
-# @click.option("--n-svs", default=2)
-# def pheno(n_mxs, n_svs):
-#     lims = {}
-#     with Progress() as progress:
-#         for ann_to, mx_range in MX_RANGES.items():
-#             if ann_to == "sm":
-#                 model = HiggsPortal(1.0, 1.0, 1.0, 1.0)
-#                 lims[ann_to] = {}
-#                 lims[ann_to]["ms_over_mx"] = MS_OVER_MX[ann_to]
-#                 mxs = lims[ann_to]["mxs"] = np.geomspace(*mx_range, num=n_mxs)
-#                 lims[ann_to]["pheno"] = get_pheno_limit(
-#                     model, mxs, MS_OVER_MX[ann_to], n_svs=n_svs, progress=progress
-#                 )
-#
-#     print(nested_dict_to_string(lims))
-
-
 @cli.command()
 @click.option("--n-mxs", default=100)
 @click.option("--save-path", default=None)
@@ -184,6 +110,14 @@ def constrain(n_mxs, save_path, print_output):
         lims["mv_over_mx"] = MV_OVER_MX
         mxs = lims["mxs"] = np.geomspace(*MX_RANGE, num=n_mxs)
 
+        lims["relic_density"] = get_relic_density_limit(
+            model,
+            "eps",
+            mxs,
+            param_range=(1e-10, 1.0),
+            update_model=update_model,
+            progress=progress,
+        )
         lims.update(get_pheno_limit(mxs, model, progress=progress))
 
         lims["gecco"], lims["existing"] = get_gamma_ray_limits(
@@ -191,9 +125,6 @@ def constrain(n_mxs, save_path, print_output):
         )
         lims["CMB"] = get_cmb_limit(
             model, mxs, update_model=update_model, progress=progress
-        )
-        lims["relic_density"] = get_relic_density_limit(
-            model, "eps", mxs, update_model=update_model, progress=progress
         )
 
     if print_output:
@@ -236,12 +167,12 @@ def plot(lim_path, save_path):
         save_path = os.path.join(SCRIPT_PATH, "figures", "km.pdf")
 
     fig, axs = plt.subplots(
-        1, 2, figsize=(6, 3), gridspec_kw={"width_ratios": [1.5, 1]}
+        1, 2, figsize=(7, 3.5), gridspec_kw={"width_ratios": [1.5, 1]}
     )
 
     ax = axs[0]
     mxs = lims["mxs"]
-    plot_lims(ax, mxs, lims, "ann", "p-wave")
+    plot_lims(ax, mxs, lims, "ann", "s-wave")
     ax.plot(mxs, lims["relic_density"], ":k")
     ax.fill_between(
         mxs,

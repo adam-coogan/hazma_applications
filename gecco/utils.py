@@ -104,6 +104,12 @@ def make_legend_ax(
             Line2D([0], [0], linestyle="--", color=COLOR_DICT[label], label=label)
         ]
 
+    if cmb_kind == "dec":
+        label = r"CMB"
+        handles += [
+            Line2D([0], [0], linestyle="--", color=COLOR_DICT[label], label=label)
+        ]
+
     if thermal_relic:
         label = "Thermal relic"
         handles += [

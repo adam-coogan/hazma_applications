@@ -87,7 +87,7 @@ def add_theta_label(ax, x, y, power):
         y,
         r"$\theta=10^{" + str(power) + r"}$",
         fontsize=7,
-        rotation=-55,
+        rotation=-60,
         color="k"
     )
 
@@ -113,11 +113,11 @@ def plot(lim_path, save_path):
         save_path = os.path.join(SCRIPT_PATH, "figures", "rh_neutrino.pdf")
 
     fig, axs = plt.subplots(
-        1, 3, figsize=(10, 3), gridspec_kw={"width_ratios": [1.5, 1.5, 1]}
+        1, 3, figsize=(10, 3.5), gridspec_kw={"width_ratios": [1.5, 1.5, 1]}
     )
 
-    text_xs = [42, 7, 1.1, 0.18, 0.13]
-    text_ys = [1e27, 1e27, 1e27, 1e27, 5e22]
+    text_xs = [40, 7, 1.2, 0.2, 0.15]
+    text_ys = [3e27, 1e27, 1e27, 1e27, 5e22]
     powers = [-16, -14, -12, -10, -8]
     for (lepton, ls), ax in zip(lims.items(), axs):
         mxs = ls["mxs"]

@@ -105,14 +105,28 @@ def plot(kind, lim_path, save_path):
         configure_ticks(ax)
         ax.grid(linewidth=0.3)
         ax.set_xlabel(r"$m_\chi$ [MeV]")
-        ax.set_ylabel(r"$\langle \sigma v \rangle_{\bar{\chi}\chi,0}$ [cm$^3$/s]")
+
+        if kind == "ann":
+            ax.set_ylabel(r"$\langle \sigma v \rangle_{\bar{\chi}\chi,0}$ [cm$^3$/s]")
+        else:
+            # Plot CMB limits
+            ax.set_ylabel(r"$\tau$ [s]")
+
+            if fs == "e e":
+                mxs_cmb, svs_cmb = np.loadtxt(
+                    os.path.join(SCRIPT_PATH, "data", "single-channel-dec-ee-cmb.dat"),
+                    unpack=True,
+                )
+                mxs_cmb *= 1e3  # GeV -> MeV
+                ax.plot(mxs_cmb, svs_cmb, ls="--", lw=1, c="k", label="CMB")
+
         ax.set_xlim(mxs.min(), mxs.max())
         ax.set_ylim(*FS_TO_YLIM[kind][fs])
         ax.set_title(FS_TO_TITLE[fs])
 
     # Can use any final state to get GECCO and existing target names
     make_legend_ax(
-        axes[1, 1], lims["e e"]["gecco"].keys(), lims["e e"]["existing"].keys()
+        axes[1, 1], lims["e e"]["gecco"].keys(), lims["e e"]["existing"].keys(), "dec"
     )
     fig.tight_layout()
     fig.savefig(save_path)
